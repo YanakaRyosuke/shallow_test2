@@ -15,6 +15,28 @@ import matplotlib.pylab as plt
 import pdb
 import cv2
 from PIL import Image
+import glob
+
+NUM_CLASSES = 10  # CIFAR10データは、10種類のdata
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+DATA_DIR = './data/'
+IMG_SIZE_AND_CHANNEL = 0
+TRAIN_NUM_EPOCHS = 50   #50エポック
+
+def main():
+    (train_loader, test_loader) = get_train_test_data()
+    print("train_loader: ", train_loader)
+    print("test_loader: ", test_loader)
+
+    (net, criterion, optimizer) = get_net_criterion_optimizer()
+
+    (train_loss_list, train_acc_list, val_loss_list, val_acc_list) = \
+        train(train_loader, test_loader, net, criterion, optimizer)
+
+    output_to_file(train_loss_list, train_acc_list, val_loss_list, val_acc_list)
+
+def get_train_test_data():
+    #いい感じにデータセットを入れている？
 
 class NeuralNet (nn.Module):
     def __init__(self):
@@ -42,6 +64,15 @@ class NeuralNet (nn.Module):
         
         x = self.fc2(x)
         return x
+    
+
+def get_net_criterion_optimizer():
+    net = MLPNet().to(DEVICE)
+    #MLPLossは距離の二乗をとる
+    criterion = nn.MLPLoss()
+    # 以下のparameterの妥当性は理解していません
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+    return net, criterion, optimizer
 
 def train(train_loader, test_loader, net, criterion, optimizer):
     #最後にlossとaccuracyのグラフを出力する為
@@ -49,6 +80,13 @@ def train(train_loader, test_loader, net, criterion, optimizer):
     train_acc_list =  []
     val_loss_list =   []
     val_acc_list =    []
+    
+    #globはファイルの中のpathを取得する．
+    files = glob.glob('./maps/train/*.png') #saliency画像へのパス
+    files_rgb = glob.glob('./train/*.jpg') #rgb画像へのパス
+    batch = 20 #バッチサイズを指定
+    iteration = int(len(files)/20)
+    #画像は一万枚なので10000/20で500イタレーション回る，epoch数はbatchサイズで決まる？
 
     for epoch in range(TRAIN_NUM_EPOCHS):
         #エポックごとに初期化
@@ -59,30 +97,14 @@ def train(train_loader, test_loader, net, criterion, optimizer):
     
         net.train()  #訓練モードへ切り替え
 
-
-        
-        for i, (images, labels) in enumerate(train_loader):  #ミニバッチで分割し読込み
-            #viewで縦横32x32 & 3channelのimgを1次元に変換し、toでDEVICEに転送
-            """
-            images, labels = images.view(-1, IMG_SIZE_AND_CHANNEL).to(DEVICE), labels.to(DEVICE)
-            """
-            width = 96
-            height = 96
-            dim = (width, height)
- 
-            # resize image
-            resize_images = np.zeros((0,3,96,96))
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            for j in range(len(images)):
-                cv_image = images[j].numpy()
-                cv_image = np.trancepose(cv_image,(1,2,0))
-                output = cv2.resize(cv_image, dim)
-                output = np.transpose(output,(2,0,1))
-                output = np.reshape(output, (1,3,96,96))
-                resize_images = np.append(resize_images, output, axis=0)
-            images = torch.tensor(resize_images).float()
-            images ,labels = images.to(DEVICE), labels.to(DEVICE)
-          
+       　#for i, (images, labels) in enumerate(train_loader):  #ミニバッチで分割し読込み
+         for i in range(iteration)   
+            
+            resize_images = np.zeros((0,3,96,96)) #batchサイズで重ねるための都合のいい箱
+            resize_saliency = np.zeros((0,1,48,48)) #グレースケール画像なので次元数1，出力は48なので48
+            
+            for j in range(batch)
+                cv_image = cv2.imread(files_rgb[batch*i + j])
             import pdb;pdb.set_trace()
 
             images = np.asarray(images)
