@@ -104,16 +104,30 @@ def train(train_loader, test_loader, net, criterion, optimizer):
             resize_saliency = np.zeros((0,1,48,48)) #グレースケール画像なので次元数1，出力は48なので48
             
             for j in range(batch)
-                cv_image = cv2.imread(files_rgb[batch*i + j])
-            import pdb;pdb.set_trace()
-
-            images = np.asarray(images)
-            print(images.shape)
-            images = cv2.resize(images, dim, interpolation = cv2.INTER_AREA)
-
+                cv_image = cv2.imread(files_rgb[batch*i + j]) #バッチサイズごとを足すことで10000枚までを
+                cv_image = cv.resize(cv_image,(96,96)) #96×96にresize
+                cv_image = np.transpose(cv_image(2,0,1))  #配列の軸の順番を入れ替える
+                cv_image = np.reshape(cv_image(1,3,96,96)) #配列の変更
+                cv_saliency = cv2.imread(files[batch*i + j])
+                cv_saliency = cv2.resize(cv_saliency, (48,48))
+                cv_saliency = cv_saliency/np.max(cv_saliency) #cv_saliencyの最大値で割ることで正規化
+                cv_saliency = np.reshape(cv_saliency, (1,1,48,48))
+                
+                resize_images = np.append(resize_images, cv_image, axis=0)
+                resize_saliency = np.append(resize_saliency, cv_saliency, axis=0) #appendで追加していく
+            
+            resize_images = torch.Tensor(resize_images)
+            resize_saliency = torch.Tensor(resize_saliency)
+            
+            resize_images, resize_saliency = resize_images.to(DEVICE), resize_saliency.to(DEVICE)
+        
             optimizer.zero_grad()               # 勾配をリセット
             outputs = net(images)               # 順伝播の計算
-            loss = criterion(outputs, labels)   #lossの計算
+            loss = criterion(outputs, resize_saliency)   #lossの計算
+            
+            print(i + 1) #iはイタレーションの回数
+            print(loss.item())
+            
             train_loss += loss.item()           #lossのミニバッチ分を溜め込む
             #accuracyをミニバッチ分を溜め込む
             #正解ラベル（labels）と予測値のtop1（outputs.max(1)）が合っている場合に1が返る
@@ -123,35 +137,33 @@ def train(train_loader, test_loader, net, criterion, optimizer):
             #重みの更新
             optimizer.step()
             #平均lossと平均accuracyを計算
-        avg_train_loss = train_loss / len(train_loader.dataset)
-        avg_train_acc = train_acc / len(train_loader.dataset)
-    
-
-        net.eval()   #評価モードへ切り替え
+        avg_train_loss = train_loss / iteration
         
-        #評価するときに必要のない計算が走らないようtorch.no_gradを使用
-        with torch.no_grad():
-            for images, labels in test_loader:        
-                images, labels = images.view(-1,IMG_SIZE_AND_CHANNEL).to(DEVICE),labels.to(DEVICE)
-                outputs = net(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-                val_acc += (outputs.max(1)[1] == labels).sum().item()
-        avg_val_loss = val_loss / len(test_loader.dataset)
-        avg_val_acc = val_acc / len(test_loader.dataset)
-    
-
-        # 訓練データのlossと検証データのlossとaccuracyをログ出力.
-        print ("Epoch [{}/{}], Loss: {loss:.4f},val_loss: {val_loss:.4f},val_acc: {val_acc:.4f}"
-               .format(epoch+1,
-                       TRAIN_NUM_EPOCHS,
-                       i+1,
-                       loss=avg_train_loss,
-                       val_loss=avg_val_loss, val_acc=avg_val_acc))
-
-        train_loss_list.append(avg_train_loss)
-        train_acc_list.append(avg_train_acc)
-        val_loss_list.append(avg_val_loss)
-        val_acc_list.append(avg_val_acc)
+        torch.save(net, "./checkpoint/yanakakami.pth") #保存する
 
     return train_loss_list,train_acc_list,val_loss_list,val_acc_list
+
+if __name__ == '__main__':
+    main()
+
+"""
+500
+0.021505162119865417
+Traceback (most recent call last):
+  File "shallow_test4.py", line 325, in <module>
+    main()
+  File "shallow_test4.py", line 39, in main
+    output_to_file(train_loss_list, train_acc_list, val_loss_list, val_acc_list)
+  File "shallow_test4.py", line 292, in output_to_file
+    label='train_loss')
+  File "/opt/conda/envs/py366/lib/python3.6/site-packages/matplotlib/pyplot.py", line 2763, in plot
+    is not None else {}), **kwargs)
+  File "/opt/conda/envs/py366/lib/python3.6/site-packages/matplotlib/axes/_axes.py", line 1647, in plot
+    lines = [*self._get_lines(*args, data=data, **kwargs)]
+  File "/opt/conda/envs/py366/lib/python3.6/site-packages/matplotlib/axes/_base.py", line 216, in __call__
+    yield from self._plot_args(this, kwargs)
+  File "/opt/conda/envs/py366/lib/python3.6/site-packages/matplotlib/axes/_base.py", line 342, in _plot_args
+    raise ValueError(f"x and y must have same first dimension, but "
+ValueError: x and y must have same first dimension, but have shapes (50,) and (0,)
+
+"""
